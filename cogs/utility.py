@@ -56,8 +56,11 @@ class ModmailHelpCommand(commands.HelpCommand):
         prefix = self.context.clean_prefix
 
         formats = [""]
+        
+        commands = cog.get_commands() if hasattr(cog, 'get_commands') else cog
+
         for cmd in await self.filter_commands(
-            cog.get_commands() if not no_cog else cog,
+            commands,
             sort=True,
             key=lambda c: (bot.command_perm(c.qualified_name), c.qualified_name),
         ):
@@ -109,20 +112,30 @@ class ModmailHelpCommand(commands.HelpCommand):
 
     async def send_bot_help(self, mapping):
         embeds = []
-        no_cog_commands = sorted(mapping.pop(None), key=lambda c: c.qualified_name)
-        cogs = sorted(mapping, key=lambda c: c.qualified_name)
+        
+        # Remove the 'None' cog from the mapping
+        no_cog_commands = mapping.pop(None, [])
+
+        # Sort the remaining cogs
+        cogs = sorted(mapping.keys(), key=lambda c: c.qualified_name if c else '')
 
         bot = self.context.bot
 
         # always come first
         default_cogs = [bot.get_cog("Modmail"), bot.get_cog("Utility"), bot.get_cog("Plugins")]
+        
+        # Ensure default cogs are in the list of cogs to be processed
+        for dc in default_cogs:
+            if dc not in cogs:
+                cogs.insert(0, dc)
 
-        default_cogs.extend(c for c in cogs if c not in default_cogs)
-
-        for cog in default_cogs:
-            embeds.extend(await self.format_cog_help(cog))
+        for cog in cogs:
+            if cog: # Ensure cog is not None
+                embeds.extend(await self.format_cog_help(cog))
+        
         if no_cog_commands:
-            embeds.extend(await self.format_cog_help(no_cog_commands, no_cog=True))
+            sorted_commands = sorted(no_cog_commands, key=lambda c: c.qualified_name)
+            embeds.extend(await self.format_cog_help(sorted_commands, no_cog=True))
 
         session = EmbedPaginatorSession(self.context, *embeds, destination=self.get_destination())
         return await session.run()

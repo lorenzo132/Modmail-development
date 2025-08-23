@@ -52,18 +52,9 @@ class PaginatorSession:
         self.view = None
         self.select_menu = None
 
-        self.callback_map = {
-            "<<": self.first_page,
-            "<": self.previous_page,
-            ">": self.next_page,
-            ">>": self.last_page,
-        }
-        self._buttons_map = {"<<": None, "<": None, ">": None, ">>": None}
-
     async def show_page(self, index: int) -> typing.Optional[typing.Dict]:
         """
         Show a page by page number.
-
         Parameters
         ----------
         index : int
@@ -81,37 +72,15 @@ class PaginatorSession:
         else:
             await self.create_base(page)
 
-        self.update_disabled_status()
+        if self.view:
+            self.update_disabled_status()
         return result
 
     def update_disabled_status(self):
-        if self.current == self.first_page():
-            # disable << button
-            if self._buttons_map["<<"] is not None:
-                self._buttons_map["<<"].disabled = True
-
-            if self._buttons_map["<"] is not None:
-                self._buttons_map["<"].disabled = True
-        else:
-            if self._buttons_map["<<"] is not None:
-                self._buttons_map["<<"].disabled = False
-
-            if self._buttons_map["<"] is not None:
-                self._buttons_map["<"].disabled = False
-
-        if self.current == self.last_page():
-            # disable >> button
-            if self._buttons_map[">>"] is not None:
-                self._buttons_map[">>"].disabled = True
-
-            if self._buttons_map[">"] is not None:
-                self._buttons_map[">"].disabled = True
-        else:
-            if self._buttons_map[">>"] is not None:
-                self._buttons_map[">>"].disabled = False
-
-            if self._buttons_map[">"] is not None:
-                self._buttons_map[">"].disabled = False
+        self.view.first_page.disabled = self.current == self.first_page()
+        self.view.previous_page.disabled = self.current == self.first_page()
+        self.view.last_page.disabled = self.current == self.last_page()
+        self.view.next_page.disabled = self.current == self.last_page()
 
     async def create_base(self, item) -> None:
         """
@@ -201,14 +170,12 @@ class PaginatorSession:
 class PaginatorView(View):
     """
     View that is used for pagination.
-
     Parameters
     ----------
     handler : PaginatorSession
         The paginator session that spawned this view.
     timeout : float
         How long to wait for before the session closes.
-
     Attributes
     ----------
     handler : PaginatorSession
@@ -220,72 +187,48 @@ class PaginatorView(View):
     def __init__(self, handler: PaginatorSession, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.handler = handler
-        self.clear_items()  # clear first so we can control the order
-        self.fill_items()
+
+        if self.handler.select_menu:
+            # Reorder items to place select menu on top
+            buttons = self.children.copy()
+            self.clear_items()
+            self.add_item(self.handler.select_menu)
+            for button in buttons:
+                self.add_item(button)
+
+    async def interaction_check(self, interaction: Interaction):
+        """Only allow the message author to interact"""
+        if interaction.user != self.handler.ctx.author:
+            await interaction.response.send_message("Only the original author can control this!", ephemeral=True)
+            return False
+        return True
+
+    async def _page_button_callback(self, interaction: Interaction, callback: typing.Callable):
+        kwargs = await self.handler.show_page(callback())
+        await interaction.response.edit_message(**kwargs, view=self)
+
+    @discord.ui.button(label="<<", style=ButtonStyle.secondary)
+    async def first_page(self, interaction: Interaction, button: Button):
+        await self._page_button_callback(interaction, self.handler.first_page)
+
+    @discord.ui.button(label="<", style=ButtonStyle.primary)
+    async def previous_page(self, interaction: Interaction, button: Button):
+        await self._page_button_callback(interaction, self.handler.previous_page)
 
     @discord.ui.button(label="Stop", style=ButtonStyle.danger)
     async def stop_button(self, interaction: Interaction, button: Button):
         await self.handler.close(interaction=interaction)
 
-    def fill_items(self):
-        if self.handler.select_menu is not None:
-            self.add_item(self.handler.select_menu)
+    @discord.ui.button(label=">", style=ButtonStyle.primary)
+    async def next_page(self, interaction: Interaction, button: Button):
+        await self._page_button_callback(interaction, self.handler.next_page)
 
-        for label, callback in self.handler.callback_map.items():
-            if len(self.handler.pages) == 2 and label in ("<<", ">>"):
-                continue
-
-            if label in ("<<", ">>"):
-                style = ButtonStyle.secondary
-            else:
-                style = ButtonStyle.primary
-
-            button = PageButton(self.handler, callback, label=label, style=style)
-
-            self.handler._buttons_map[label] = button
-            self.add_item(button)
-        self.add_item(self.stop_button)
-
-    async def interaction_check(self, interaction: Interaction):
-        """Only allow the message author to interact"""
-        if interaction.user != self.handler.ctx.author:
-            await interaction.response.send_message(
-                "Only the original author can control this!", ephemeral=True
-            )
-            return False
-        return True
+    @discord.ui.button(label=">>", style=ButtonStyle.secondary)
+    async def last_page(self, interaction: Interaction, button: Button):
+        await self._page_button_callback(interaction, self.handler.last_page)
 
 
-class PageButton(Button):
-    """
-    A button that has a callback to jump to the next page
-
-    Parameters
-    ----------
-    handler : PaginatorSession
-        The paginator session that spawned this view.
-    page_callback : Callable
-        A callable that returns an int of the page to go to.
-
-    Attributes
-    ----------
-    handler : PaginatorSession
-        The paginator session that spawned this view.
-    page_callback : Callable
-        A callable that returns an int of the page to go to.
-    """
-
-    def __init__(self, handler, page_callback, **kwargs):
-        super().__init__(**kwargs)
-        self.handler = handler
-        self.page_callback = page_callback
-
-    async def callback(self, interaction: Interaction):
-        kwargs = await self.handler.show_page(self.page_callback())
-        await interaction.response.edit_message(**kwargs, view=self.view)
-
-
-class PageSelect(Select):
+class PageSelect(discord.ui.Select):
     def __init__(self, handler: PaginatorSession, pages: typing.List[typing.Tuple[str]]):
         self.handler = handler
         options = []

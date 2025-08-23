@@ -18,7 +18,22 @@ from core.models import DMDisabled, PermissionLevel, SimilarCategoryConverter, g
 from core.paginator import EmbedPaginatorSession
 from core.thread import Thread
 from core.time import UserFriendlyTime, human_timedelta
-from core.utils import *
+from core.utils import (
+    create_not_found_embed,
+    format_description,
+    format_preview,
+    normalize_alias,
+    parse_alias,
+    trigger_typing,
+    truncate,
+    escape_code_block,
+    extract_block_timestamp,
+    get_top_role,
+    match_user_id,
+    match_other_recipients,
+    User,
+    DummyParam,
+)
 
 logger = getLogger(__name__)
 

@@ -573,30 +573,24 @@ def extract_block_timestamp(reason, id_):
     return end_time, after
 
 
-class AcceptButton(discord.ui.Button):
-    def __init__(self, emoji):
-        super().__init__(style=discord.ButtonStyle.gray, emoji=emoji)
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.value = True
-        await interaction.response.edit_message(view=None)
-        self.view.stop()
-
-
-class DenyButton(discord.ui.Button):
-    def __init__(self, emoji):
-        super().__init__(style=discord.ButtonStyle.gray, emoji=emoji)
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.value = False
-        await interaction.response.edit_message(view=None)
-        self.view.stop()
-
-
 class ConfirmThreadCreationView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, accept_emoji, deny_emoji):
         super().__init__(timeout=20)
         self.value = None
+        self.accept.emoji = accept_emoji
+        self.deny.emoji = deny_emoji
+
+    @discord.ui.button(style=discord.ButtonStyle.gray)
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = True
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+    @discord.ui.button(style=discord.ButtonStyle.gray)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = False
+        await interaction.response.edit_message(view=None)
+        self.stop()
 
 
 class DummyParam:
